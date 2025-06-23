@@ -1,2 +1,8 @@
 .venv/
-yolov5s.pt
+car/
+road_anomaly/
+#merged_dataset/
+RoadDamageDataset/
+RoadDamageDataset.tar.gz
+yolov8n.pt
+yolo11n.pt

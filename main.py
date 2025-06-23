@@ -1,66 +1,79 @@
+from pathlib import Path
 import torch
-from transformers import OwlViTProcessor, OwlViTForObjectDetection
-import cv2
-from PIL import Image
-import numpy as np
+from ultralytics import YOLO
+import yaml
+import shutil
+import os
 
-processor = OwlViTProcessor.from_pretrained("google/owlvit-base-patch32")
-model = OwlViTForObjectDetection.from_pretrained("google/owlvit-base-patch32")
+if __name__ == "__main__":
+    model = YOLO("yolo11n.pt")
+    print("YOLOv11 model loaded.")
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-model.to(device)
+    merged_path = Path('./merged_dataset')
 
-text_queries = ["person", "bicycle", "dog", "cell phone", "airplane", "zebra", "remote", "coffee mug", "fire hydrant"]
+    print(merged_path)
+    model.train(data=str(merged_path / 'data.yaml'), epochs=50, imgsz=640, amp=False)
 
-cap = cv2.VideoCapture(0)
-if not cap.isOpened():
-    print("Could not open webcam.")
-    exit()
+# Paths
+# car_path = Path('./car')
+# anomaly_path = Path('./road_anomaly')
 
-frame_count = 0
-results = None 
+# merged_path.mkdir(exist_ok=True)
 
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
+# Read both datasets' class names
+# with open(car_path / 'data.yaml', 'r') as f:
+#     car_yaml = yaml.safe_load(f)
+#     car_classes = car_yaml['names']
 
-    frame_count += 1
+# with open(anomaly_path / 'data.yaml', 'r') as f:
+#     anomaly_yaml = yaml.safe_load(f)
+#     anomaly_classes = anomaly_yaml['names']
 
-    if frame_count % 5 == 0:
-        img = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        inputs = processor(text=text_queries, images=img, return_tensors="pt").to(device)
+# Combine class names and generate a mapping for road_anomaly class IDs
+# merged_classes = car_classes + anomaly_classes
+# anomaly_class_offset = len(car_classes)
 
-        with torch.no_grad():
-            outputs = model(**inputs)
+# print("Merged class count:", len(merged_classes))
 
-        target_sizes = torch.Tensor([img.size[::-1]]).to(device)
-        results = processor.post_process(outputs=outputs, target_sizes=target_sizes)[0]
+# Create new data.yaml
+# new_yaml = {
+#     'train': str(merged_path / 'train/images'),
+#     'val': str(merged_path / 'valid/images'),
+#     'test': str(merged_path / 'test/images'),
+#     'nc': len(merged_classes),
+#     'names': merged_classes
+# }
 
-    if results is not None:
-        boxes = results["boxes"]
-        scores = results["scores"]
-        labels = results["labels"]
+# with open(merged_path / 'data.yaml', 'w') as f:
+#     yaml.dump(new_yaml, f)
 
-        for box, score, label in zip(boxes, scores, labels):
-            if score < 0.3:
-                continue
+# Copy and merge folders
+# def copy_data(src_root, dst_root, class_offset=0, relabel=False):
+#     for split in ['train', 'valid', 'test']:
+#         for subdir in ['images', 'labels']:
+#             src = src_root / split / subdir
+#             dst = dst_root / split / subdir
+#             dst.mkdir(parents=True, exist_ok=True)
+            
+#             for file in src.glob('*.jpg' if subdir == 'images' else '*.txt'):
+#                 dst_file = dst / file.name
 
-            x1, y1, x2, y2 = map(int, box.tolist())
+#                 if subdir == 'images' or not relabel:
+#                     shutil.copy(file, dst_file)
+#                 else:
+#                     # Relabel file: adjust class IDs
+#                     with open(file, 'r') as rf, open(dst_file, 'w') as wf:
+#                         for line in rf:
+#                             parts = line.strip().split()
+#                             if len(parts) >= 1:
+#                                 class_id = int(parts[0]) + class_offset
+#                                 new_line = ' '.join([str(class_id)] + parts[1:]) + '\n'
+#                                 wf.write(new_line)
 
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+# Merge datasets
+#copy_data(car_path, merged_path, relabel=False)
+#copy_data(anomaly_path, merged_path, class_offset=anomaly_class_offset, relabel=True)
 
-            label_text = f"{text_queries[label]} {score:.2f}"
+#print("Dataset merged successfully. Starting training...")
 
-            (w, h), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 1)
-            cv2.rectangle(frame, (x1, y1 - h - 10), (x1 + w, y1), (0, 255, 0), -1)  # filled rectangle
-            cv2.putText(frame, label_text, (x1, y1 - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 1)
-
-    cv2.imshow("OWL-ViT Open-Vocabulary Detection", frame)
-
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+# Train YOLOv8 on the merged dataset
