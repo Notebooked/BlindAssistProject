@@ -25,7 +25,7 @@ while True:
 
     frame_count += 1
 
-    frame_interval = 1  # You can change this value to control the interval
+    frame_interval = 1  # frame interval for how often it runs the model
 
     if frame_count % frame_interval == 0:
         results = model(frame, verbose=False)
