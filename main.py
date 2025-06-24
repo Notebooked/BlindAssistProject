@@ -9,7 +9,7 @@ import platform
 from ultralytics import YOLO
 
 # Load both models
-yolov8_model = YOLO('/Users/rosha/GitHub/BlindAssistProject/runs/detect/train/weights/best.pt')
+yolov8_model = YOLO('runs/detect/train/weights/best.pt')
 yolov5_model = torch.hub.load('ultralytics/yolov5', 'yolov5s', pretrained=True)
 
 # TTS threading variables
