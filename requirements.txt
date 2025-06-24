@@ -43,3 +43,4 @@ ultralytics-thop==2.0.14
 urllib3==2.5.0
 transformers
 pyttsx3
+threading
