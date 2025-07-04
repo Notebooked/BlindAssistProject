@@ -64,6 +64,22 @@ def speak_text(text):
         tts_queue.clear()  # Clear queue to avoid backlog
         tts_queue.append(text)
 
+def get_position_description(x1, x2, frame_width):
+    """Determine if object is on the left, right, or center of the frame"""
+    center_x = (x1 + x2) / 2
+    frame_center = frame_width / 2
+    
+    # Define thresholds for left/right (adjust these values as needed)
+    left_threshold = frame_width * 0.35  # 35% from left
+    right_threshold = frame_width * 0.65  # 65% from left
+    
+    if center_x < left_threshold:
+        return "on the left"
+    elif center_x > right_threshold:
+        return "on the right"
+    else:
+        return "in the center"
+
 print("YOLOv8 Model loaded successfully!")
 print(f"YOLOv8 Model classes: {yolov8_model.names}")
 print(f"YOLOv8 Number of classes: {len(yolov8_model.names)}")
@@ -73,7 +89,7 @@ print(f"YOLOv5 Model classes: {yolov5_model.names}")
 print(f"YOLOv5 Number of classes: {len(yolov5_model.names)}")
 
 confidence_threshold = 0.1
-tts_interval = 10  # TTS announcement every 5 seconds
+tts_interval = 10  # TTS announcement every 10 seconds
 last_tts_time = 0
 
 # Start TTS worker thread
@@ -117,6 +133,7 @@ while True:
         break
 
     frame_count += 1
+    frame_height, frame_width = frame.shape[:2]
 
     frame_interval = 1  # frame interval for how often it runs the models
 
@@ -148,7 +165,7 @@ while True:
 
     # Collect YOLOv8 detections first (priority)
     yolov8_detections = []  # Store (box, class_name) tuples
-    detected_objects = []  # Store (class_name, confidence) for TTS
+    detected_objects = []  # Store (class_name, confidence, position) for TTS
     total_detections = 0
     
     if yolov8_results is not None and len(yolov8_results) > 0:
@@ -166,8 +183,9 @@ while True:
                 total_detections += 1
                 x1, y1, x2, y2 = map(int, box)
                 class_name = yolov8_model.names[class_id]
+                position = get_position_description(x1, x2, frame_width)
                 yolov8_detections.append(((x1, y1, x2, y2), class_name))
-                detected_objects.append((class_name, score))  # Add to TTS list
+                detected_objects.append((class_name, score, position))  # Add position to TTS list
 
                 # Green boxes for YOLOv8
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
@@ -207,7 +225,8 @@ while True:
             # Only draw and count if it's NOT the same object
             if not is_same_object:
                 total_detections += 1
-                detected_objects.append((current_class, score))  # Add to TTS list
+                position = get_position_description(x1, x2, frame_width)
+                detected_objects.append((current_class, score, position))  # Add position to TTS list
 
                 # Blue boxes for YOLOv5
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
@@ -220,27 +239,39 @@ while True:
                 cv2.putText(frame, label_text, (x1, y1 - 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
     
+    # Draw vertical lines to show left/center/right zones
+    left_line = int(frame_width * 0.35)
+    right_line = int(frame_width * 0.65)
+    cv2.line(frame, (left_line, 0), (left_line, frame_height), (128, 128, 128), 1)
+    cv2.line(frame, (right_line, 0), (right_line, frame_height), (128, 128, 128), 1)
+    
     # Display total detection count
     cv2.putText(frame, f"Total Detections: {total_detections}", (10, 30),
                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
     
     # Display legend
-    cv2.putText(frame, "Green: YOLOv8 | Blue: YOLOv5", (10, frame.shape[0] - 10),
+    cv2.putText(frame, "Green: YOLOv8 | Blue: YOLOv5", (10, frame.shape[0] - 30),
+               cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    cv2.putText(frame, "Gray lines: Left/Center/Right zones", (10, frame.shape[0] - 10),
                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
 
-    # TTS announcement every 5 seconds
+    # TTS announcement every 10 seconds
     current_time = time.time()
     if current_time - last_tts_time >= tts_interval:
         if detected_objects:
-            # Group objects by class and find highest confidence for each
+            # Group objects by class and position, keeping highest confidence for each
             object_dict = {}
-            for obj_name, confidence in detected_objects:
-                if obj_name not in object_dict or confidence > object_dict[obj_name]:
-                    object_dict[obj_name] = confidence
+            for obj_name, confidence, position in detected_objects:
+                key = f"{obj_name}_{position}"
+                if key not in object_dict or confidence > object_dict[key][1]:
+                    object_dict[key] = (obj_name, confidence, position)
             
-            text = "I see the following objects: " + ", ".join(
-                [f"{obj} with {conf*100:.0f} percent confidence" for obj, conf in object_dict.items()]
-            )
+            # Create TTS text with position information
+            object_descriptions = []
+            for obj_name, confidence, position in object_dict.values():
+                object_descriptions.append(f"{obj_name} {position} with {confidence*100:.0f} percent confidence")
+            
+            text = "I see the following objects: " + ", ".join(object_descriptions)
         else:
             text = "I do not see any objects with high confidence."
         
