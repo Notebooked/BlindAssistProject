@@ -1,5 +1,5 @@
 .venv/
 yolov5s.pt
-depth_anything_v2_vitb.pth
+depth_anything_v2_vit*.pth
 workspace.xml
 vcs.xml
